@@ -47,7 +47,9 @@ app.MapGet("/api/crypto-keys/rsa-public-key/{id:int}", (int id, KeyStorage stora
 // a) клієнт отримує випадковий публічний ключ + заголовок x-rsa-id
 app.MapGet("/api/secure/public-key", (KeyStorage storage, HttpContext ctx) =>
 {
-    var (id, keys) = storage.GetRandom();
+    var random = storage.GetRandom();
+    if (random is null) return Results.NotFound(new { error = "No RSA keys available" });
+    var (id, keys) = random.Value;
     ctx.Response.Headers["x-rsa-id"] = id.ToString();
     return Results.Text(keys.PublicKey);
 });
@@ -100,5 +102,24 @@ app.MapPost("/api/secure/message", (
         return Results.BadRequest(new { error = "Cannot decrypt message: " + ex.Message });
     }
 });
+// ---------- Lab 4: CRUD для веб-клієнта ----------
+app.MapGet("/api/keys", (KeyStorage storage) =>
+    Results.Ok(storage.List().Select(x => KeyDto.From(x.Id, x.Keys))));
 
+app.MapPost("/api/keys", (KeyNameRequest? req, IRsaService rsa, KeyStorage storage) =>
+{
+    var keys = rsa.GenerateCryptoKeys();
+    keys.Name = req?.Name?.Trim() ?? string.Empty;
+    var id = storage.Add(keys);
+    return Results.Created($"/api/keys/{id}", KeyDto.From(id, keys));
+});
+
+app.MapPut("/api/keys/{id:int}", (int id, KeyNameRequest req, KeyStorage storage) =>
+{
+    if (!storage.Rename(id, req.Name?.Trim() ?? string.Empty)) return Results.NotFound();
+    return Results.Ok(KeyDto.From(id, storage.Get(id)!));
+});
+
+app.MapDelete("/api/keys/{id:int}", (int id, KeyStorage storage) =>
+    storage.Remove(id) ? Results.NoContent() : Results.NotFound());
 app.Run();
