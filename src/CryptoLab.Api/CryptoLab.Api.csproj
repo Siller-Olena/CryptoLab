@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CryptoLab.Common\CryptoLab.Common.csproj" />
+    <ProjectReference Include="..\CryptoLab.Data\CryptoLab.Data.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -2,6 +2,8 @@ using System.Text.Json;
 using CryptoLab.Api;
 using CryptoLab.Common;
 using Microsoft.AspNetCore.Mvc;
+using CryptoLab.Data;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,16 +11,25 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<IRsaService, RsaService>();
 builder.Services.AddSingleton<IAesService, AesService>();
-builder.Services.AddSingleton<KeyStorage>();
+builder.Services.AddDbContext<AppDbContext>(o =>
+    o.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddScoped<KeyStorage>();
 builder.Services.AddSingleton<SessionStorage>();
 
 var app = builder.Build();
 
 // При старті генеруємо 10 пар RSA ключів
-var rsaService = app.Services.GetRequiredService<IRsaService>();
-var keyStorage = app.Services.GetRequiredService<KeyStorage>();
-for (var i = 0; i < 10; i++)
-    keyStorage.Add(rsaService.GenerateCryptoKeys());
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    if (!db.RsaKeys.Any())
+    {
+        var rsaService = scope.ServiceProvider.GetRequiredService<IRsaService>();
+        var keyStorage = scope.ServiceProvider.GetRequiredService<KeyStorage>();
+        for (var i = 0; i < 10; i++)
+            keyStorage.Add(rsaService.GenerateCryptoKeys());
+    }
+}
 
 app.UseSwagger();
 app.UseSwaggerUI();
