@@ -1,0 +1,42 @@
+nameOverride: ""
+fullnameOverride: ""
+
+api:
+  image:
+    repository: sillerolena/cryptolab-api
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  port: 8080
+  environment: Production
+
+web:
+  image:
+    repository: sillerolena/cryptolab-web
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  port: 80
+
+migrator:
+  image:
+    repository: sillerolena/cryptolab-migrator
+    tag: latest
+    pullPolicy: Always
+  backoffLimit: 6
+
+db:
+  image: postgres:16-alpine
+  port: 5432
+  name: cryptolab
+  user: postgres
+  password: change-me
+  storage:
+    size: 1Gi
+    storageClassName: cryptolab-local
+    hostPath: /tmp/cryptolab-pgdata
+
+ingress:
+  enabled: true
+  className: nginx
+  host: cryptolab.lab.test

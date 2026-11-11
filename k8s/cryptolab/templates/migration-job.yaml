@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cryptolab.fullname" . }}-migrator-{{ .Release.Revision }}
+  labels:
+    {{- include "cryptolab.labels" . | nindent 4 }}
+spec:
+  backoffLimit: {{ .Values.migrator.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: migrator
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrator
+          image: "{{ .Values.migrator.image.repository }}:{{ .Values.migrator.image.tag }}"
+          imagePullPolicy: {{ .Values.migrator.image.pullPolicy }}
+          env:
+            - name: ConnectionStrings__Default
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cryptolab.fullname" . }}-secret
+                  key: ConnectionStrings__Default
