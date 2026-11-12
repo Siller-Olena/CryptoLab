@@ -1,0 +1,4 @@
+﻿ingress:
+  host: cryptolab.lab.test
+db:
+  password: lab-password

@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cryptolab.fullname" . }}-api
+  labels:
+    {{- include "cryptolab.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: api
+    spec:
+      initContainers:
+        - name: wait-for-migrations
+          image: {{ .Values.db.image }}
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cryptolab.fullname" . }}-secret
+                  key: POSTGRES_PASSWORD
+          command: ["sh", "-c"]
+          args:
+            - |
+              until psql -h {{ include "cryptolab.fullname" . }}-db -U {{ .Values.db.user }} -d {{ .Values.db.name }} -tAc 'SELECT 1 FROM "__EFMigrationsHistory" LIMIT 1'; do
+                echo "waiting for migrations..."; sleep 3;
+              done
+      containers:
+        - name: api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.api.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "cryptolab.fullname" . }}-api-cm
+          env:
+            - name: ConnectionStrings__Default
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cryptolab.fullname" . }}-secret
+                  key: ConnectionStrings__Default
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.api.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cryptolab.fullname" . }}-api
+  labels:
+    {{- include "cryptolab.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: api
+  ports:
+    - port: {{ .Values.api.port }}
+      targetPort: {{ .Values.api.port }}

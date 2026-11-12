@@ -6,9 +6,22 @@ on:
   pull_request:
 
 jobs:
-  build-web:
-    name: build-cryptolab-web
+  images:
+    name: build-${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: cryptolab-api
+            dockerfile: Dockerfile
+            context: .
+          - name: cryptolab-migrator
+            dockerfile: src/CryptoLab.Migrator/Dockerfile
+            context: .
+          - name: cryptolab-web
+            dockerfile: src/CryptoLab.Web/Dockerfile
+            context: src/CryptoLab.Web
     steps:
       - uses: actions/checkout@v4
 
@@ -21,8 +34,29 @@ jobs:
 
       - uses: docker/build-push-action@v6
         with:
-          context: src/CryptoLab.Web
-          push: true
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/cryptolab-web:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/cryptolab-web:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.name }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.name }}:${{ github.sha }}
+
+  helm:
+    name: helm-chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint chart
+        run: helm lint k8s/cryptolab -f k8s/values.lab.yaml
+
+      - name: Package chart
+        run: helm package k8s/cryptolab --destination dist
+
+      - name: Upload chart artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: dist/*.tgz
