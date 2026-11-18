@@ -17,7 +17,8 @@ web:
     pullPolicy: Always
   replicas: 1
   port: 80
-
+  apiUrl: /api
+  
 migrator:
   image:
     repository: sillerolena/cryptolab-migrator

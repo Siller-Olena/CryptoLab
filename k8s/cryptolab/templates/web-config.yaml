@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cryptolab.fullname" . }}-web-cm
+  labels:
+    {{- include "cryptolab.labels" . | nindent 4 }}
+data:
+  config.js: |
+    window.APP_CONFIG = { apiUrl: {{ .Values.web.apiUrl | quote }} };

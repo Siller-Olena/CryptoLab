@@ -12,6 +12,8 @@ spec:
       app.kubernetes.io/component: web
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/web-config.yaml") . | sha256sum }}
       labels:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: web
@@ -25,6 +27,14 @@ spec:
           env:
             - name: API_UPSTREAM
               value: "{{ include "cryptolab.fullname" . }}-api:{{ .Values.api.port }}"
+          volumeMounts:
+            - name: config
+              mountPath: /usr/share/nginx/html/config.js
+              subPath: config.js
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "cryptolab.fullname" . }}-web-cm
 ---
 apiVersion: v1
 kind: Service

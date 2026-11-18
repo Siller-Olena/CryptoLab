@@ -4,6 +4,8 @@ using CryptoLab.Common;
 using Microsoft.AspNetCore.Mvc;
 using CryptoLab.Data;
 using Microsoft.EntityFrameworkCore;
+using CryptoLab.Api.Options;
+using CryptoLab.Api.Filters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +17,8 @@ builder.Services.AddDbContext<AppDbContext>(o =>
     o.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 builder.Services.AddScoped<KeyStorage>();
 builder.Services.AddSingleton<SessionStorage>();
+builder.Services.AddSingleton<IHashService, HashService>();
+builder.Services.Configure<SessionSettings>(builder.Configuration.GetSection("Session"));
 
 var app = builder.Build();
 
@@ -65,7 +69,7 @@ app.MapGet("/api/secure/public-key", (KeyStorage storage, HttpContext ctx) =>
     return Results.Text(keys.PublicKey);
 });
 
-// e) сервер розшифровує дані сесії та зберігає
+// e) сервер розшифровує дані сесії та зберігає (фільтр сесії тут НЕ потрібен)
 app.MapPost("/api/secure/session", (
     [FromHeader(Name = "x-rsa-id")] int rsaId,
     EncryptedRequest request,
@@ -80,7 +84,7 @@ app.MapPost("/api/secure/session", (
     {
         var json = rsa.Decrypt(pair.PrivateKey, request.Data);
         var payload = JsonSerializer.Deserialize<SessionInitPayload>(json);
-        if (payload is null || string.IsNullOrEmpty(payload.SessionId))
+        if (payload is not { SessionId.Length: > 0 })
             return Results.BadRequest(new { error = "Invalid session payload" });
 
         sessions.Set(payload.SessionId, new AesKey { Key = payload.Key, IV = payload.IV });
@@ -92,12 +96,13 @@ app.MapPost("/api/secure/session", (
     }
 });
 
-// g) сервер дешифрує повідомлення, додає час, шифрує і повертає
+// g) сервер дешифрує повідомлення, перевіряє хеш, додає час, шифрує і повертає
 app.MapPost("/api/secure/message", (
     [FromHeader(Name = "x-session-id")] string sessionId,
     EncryptedRequest request,
     SessionStorage sessions,
-    IAesService aes) =>
+    IAesService aes,
+    IHashService hash) =>
 {
     var key = sessions.Get(sessionId);
     if (key is null) return Results.NotFound(new { error = "Session not found" });
@@ -105,14 +110,33 @@ app.MapPost("/api/secure/message", (
     try
     {
         var plain = aes.Decrypt(key, request.Data);
-        var reply = $"{plain}. Received: {DateTime.UtcNow:O}";
+        var msg = JsonSerializer.Deserialize<SecureMessage>(plain);
+// перевірка цілісності: хеш від даних має збігатися з отриманим
+        if (msg is null)
+            return Results.BadRequest(new { error = "Invalid message format" });
+        if (!hash.Verify(msg.Data, msg.Hash))
+            return Results.BadRequest(new { error = "Integrity check failed" });
+
+        var reply = $"{msg.Data}. Received: {DateTime.UtcNow:O}";
         return Results.Ok(new EncryptedRequest(aes.Encrypt(key, reply)));
     }
     catch (Exception ex)
     {
         return Results.BadRequest(new { error = "Cannot decrypt message: " + ex.Message });
     }
+}).AddEndpointFilter<SessionValidationFilter>();
+
+// ---------- Lab 7: інформація про сесії ----------
+app.MapGet("/api/sessions", (SessionStorage sessions) =>
+{
+    var now = DateTime.UtcNow;
+    var result = sessions.GetAll().Select(s => new SessionInfoDto(
+        s.Id,
+        s.IsValid && s.ExpiredAt > now ? "valid" : "invalid",
+        DateTime.SpecifyKind(s.ExpiredAt, DateTimeKind.Utc)));
+    return Results.Ok(result);
 });
+
 // ---------- Lab 4: CRUD для веб-клієнта ----------
 app.MapGet("/api/keys", (KeyStorage storage) =>
     Results.Ok(storage.List().Select(x => KeyDto.From(x.Id, x.Keys))));
